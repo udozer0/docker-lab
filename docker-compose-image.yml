@@ -1,0 +1,10 @@
+services:
+  api:
+    image: udozer/cpp-api:latest
+    ports:
+      - "8080:8080"
+  reporter:
+    image: udozer/cpp-reporter:latest
+    depends_on:
+      api:
+        condition: service_started
