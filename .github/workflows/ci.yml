@@ -4,28 +4,70 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  build-test:
+  build-test-and-push:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [service-a, service-b]
+        include:
+          - service: service-a
+            image_name: api
+            dockerfile: service-a/Dockerfile
+            context: .
+          - service: service-b
+            image_name: reporter
+            dockerfile: service-b/Dockerfile
+            context: .
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build images
-        run: docker compose build
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Run tests via reporter
-        run: docker compose up --abort-on-container-exit --exit-code-from reporter
+      - name: Build and push ${{ matrix.image_name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/cpp-${{ matrix.image_name }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/cpp-${{ matrix.image_name }}:${{ github.sha }}
+          provenance: false
 
-      - name: Logs (if something failed)
-        if: failure()
+      # Прогоним интеграционный тест compose на свежесобранных образах
+      - name: Compose test with pushed images
+        if: ${{ matrix.service == 'service-b' }}  # один раз, после публикации обоих
         run: |
-          docker compose logs --no-color api || true
-          docker compose logs --no-color reporter || true
+          cat > docker-compose.ci.yml <<'YAML'
+          services:
+            api:
+              image: ${DOCKERHUB_USERNAME}/cpp-api:latest
+            reporter:
+              image: ${DOCKERHUB_USERNAME}/cpp-reporter:latest
+              depends_on:
+                api:
+                  condition: service_started
+          YAML
+          DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} docker compose -f docker-compose.ci.yml up --abort-on-container-exit --exit-code-from reporter
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color || true
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose down -v --remove-orphans || true
