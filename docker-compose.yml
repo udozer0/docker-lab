@@ -9,3 +9,6 @@ services:
   reporter:
     build: ./service-b
     container_name: reporter
+    depends_on:
+      api:
+        condition: service_healthy
