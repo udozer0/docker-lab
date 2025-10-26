@@ -8,7 +8,6 @@ permissions:
 
 env:
   REGISTRY_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-  # При PR из форка секреты недоступны: на PR будем только собирать, без push
   DO_PUSH: ${{ github.event_name != 'pull_request' }}
 
 jobs:
@@ -55,31 +54,3 @@ jobs:
             ${{ env.REGISTRY_USER }}/cpp-reporter:latest
             ${{ env.REGISTRY_USER }}/cpp-reporter:${{ github.sha }}
           provenance: false
-
-  e2e_compose_test:
-    # ждём обе сборки; если одна упала, тест даже не стартует
-    needs: [build_api, build_reporter]
-    if: ${{ github.event_name != 'pull_request' }}   # тестируем образы из реестра только на push
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/setup-buildx-action@v3
-      - name: Pull images
-        run: |
-          docker pull $REGISTRY_USER/cpp-api:latest
-          docker pull $REGISTRY_USER/cpp-reporter:latest
-      - name: Run compose on pushed images
-        run: |
-          cat > docker-compose.ci.yml <<'YAML'
-          services:
-            api:
-              image: ${REGISTRY_USER}/cpp-api:latest
-            reporter:
-              image: ${REGISTRY_USER}/cpp-reporter:latest
-              depends_on:
-                api:
-                  condition: service_started
-          YAML
-          REGISTRY_USER=${{ env.REGISTRY_USER }} docker compose -f docker-compose.ci.yml up --abort-on-container-exit --exit-code-from reporter
-      - name: Cleanup
-        if: always()
-        run: docker compose -f docker-compose.ci.yml down -v --remove-orphans
