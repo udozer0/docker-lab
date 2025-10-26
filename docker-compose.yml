@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  api:
+    build: ./service-a
+    container_name: api
+    ports:
+      - "8080:8080"
+
+  reporter:
+    build: ./service-b
+    container_name: reporter
