@@ -18,11 +18,11 @@ jobs:
           - service: service-a
             image_name: api
             dockerfile: service-a/Dockerfile
-            context: .
+            context: ./service-a
           - service: service-b
             image_name: reporter
             dockerfile: service-b/Dockerfile
-            context: .
+            context: ./service-b
 
     steps:
       - name: Checkout
